@@ -1,6 +1,6 @@
 # Dados — QCYKit
 
-Status: rascunho, aguardando aprovação do Lucas
+Status: aprovado em 2026-11-25
 
 Sem persistência. O pacote não grava arquivo, banco nem preferência; o estado vive em memória no `QCYState` de quem consome.
 

@@ -1,6 +1,6 @@
 # Design — QCYKit
 
-Status: rascunho, aguardando aprovação do Lucas
+Status: aprovado em 2026-11-25
 
 Pacote sem UI. Tokens visuais e telas vivem nos apps: [LogiBattery](https://github.com/LucasStop/LogiBattery/blob/main/DESIGN.md) e [QCYBattery](https://github.com/LucasStop/QCYBattery/blob/main/DESIGN.md).
 

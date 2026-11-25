@@ -1,6 +1,6 @@
 # Arquitetura — QCYKit
 
-Status: rascunho, aguardando aprovação do Lucas
+Status: aprovado em 2026-11-25
 
 Pacote SwiftPM (`swift-tools-version` 6.0, macOS 14), uma library `QCYKit`, sem dependência externa. Protocolo medido em [QCY.md](QCY.md).
 
