@@ -175,7 +175,40 @@ Modos somente leitura do `tools/qcyctl/run.sh` para medir propriedades, teclas, 
 ### Resultados medidos
 
 - Propriedades (`--request`): a medir.
-- Teclas (`--dump-keys`): a medir.
+- Teclas (`--dump-keys`, medido em 2026-11-25): característica GATT `000D` retornou 20 bytes:
+  `01 03 02 01 03 02 04 05 05 0b 06 06 07 00 08 00 00 00 00 00`
+  (`0x01->0x03 0x02->0x01 0x03->0x02 0x04->0x05 0x05->0x0B 0x06->0x06 0x07->0x00 0x08->0x00`, seguido de zeros). Qual `keyId` corresponde a cada gesto físico ainda precisa ser mapeado alterando um par por vez.
 - EQ (`--dump-eq`): a medir.
 - Notificações de toque (`--listen-notify`): a medir.
 - Eventos de mídia (`--media-events`): a medir.
+
+### Teste de remapeamento de teclas (`000D`)
+
+Para descobrir qual `keyId` corresponde a cada gesto físico, o `qcyctl` oferece escrita protegida na característica `000D` (`--set-key` e `--restore-keys`). Nenhum desses modos imprime MAC, nome ou número de série, e ambos exigem `--yes-write` para efetivamente escrever (sem `--yes-write`, apenas imprime o plano e sai com código 64).
+
+**Como rodar:**
+
+```bash
+# 1. Conferir o plano sem escrever (sai com 64)
+tools/qcyctl/run.sh --set-key 0x07=0x03
+
+# 2. Alterar um ou mais pares em 000D (salva backup na primeira vez, escreve, aguarda 1s e relê)
+tools/qcyctl/run.sh --seconds 12 --set-key 0x07=0x03 --yes-write
+tools/qcyctl/run.sh --seconds 12 --set-key 0x07=0x03,0x08=0x04 --yes-write
+```
+
+Na primeira escrita, os 20 bytes originais lidos de `000D` são salvos em `$TMPDIR/qcy-keys-original.hex`. Se o arquivo já existir, ele nunca é sobrescrito. A escrita só deve ser considerada válida quando a releitura após 1 segundo confirmar exatamente os bytes enviados.
+
+**Como restaurar:**
+
+```bash
+tools/qcyctl/run.sh --seconds 12 --restore-keys --yes-write
+```
+
+O comando lê `$TMPDIR/qcy-keys-original.hex`, escreve os bytes originais de volta em `000D`, aguarda 1 segundo, relê e confirma se o resultado bate.
+
+**Riscos e limites:**
+
+- Altera apenas o remapeamento de teclas em `000D` (rejeita `funId > 0x0B`, `keyId == 0x00` e payloads acima de 20 bytes).
+- Backup automático preservado em `$TMPDIR/qcy-keys-original.hex` e restauração disponível via `--restore-keys --yes-write` (e o app oficial da QCY também permite redefinir os controles).
+- Nunca escrever em outras características GATT desconhecidas (`7033`, `000B` sem validação etc.); estes caminhos nunca rodam em testes nem em CI.

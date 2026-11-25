@@ -75,6 +75,19 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
         }
     }
 
+    /// Escreve bytes crus em uma característica GATT do serviço `A001` (uso interno da sonda `qcyctl`).
+    func writeCharacteristic(_ uuidString: String, data: Data) {
+        queue.async {
+            let target = CBUUID(string: uuidString)
+            guard let peripheral = self.peripheral,
+                  let characteristic = self.characteristic(target, of: peripheral)
+            else { return }
+            let canWait = characteristic.properties.contains(.write)
+            peripheral.writeValue(data, for: characteristic,
+                                  type: canWait ? .withResponse : .withoutResponse)
+        }
+    }
+
     /// Escreve um pacote em `00001001`. Só é chamado por quem já decidiu escrever (modo, jogo, LDAC).
     public func send(_ packet: QCYPacket) {
         queue.async {
@@ -205,6 +218,13 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
         }
         requestState(peripheral)
         onReady?()
+    }
+
+    public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic,
+                           error: Error?) {
+        if let error {
+            onFailure?("falha ao escrever \(characteristic.uuid.uuidString): \(error.localizedDescription)")
+        }
     }
 
     public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic,

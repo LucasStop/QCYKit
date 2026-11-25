@@ -3,6 +3,8 @@
 # O bundle não é enfeite: CoreBluetooth aborta o processo (SIGABRT) sem NSBluetoothAlwaysUsageDescription.
 # Uso: tools/qcyctl/run.sh [--seconds 8] [--request 0x16,0x14,...] [--dump-keys] [--dump-eq]
 #                           [--listen-notify] [--media-events] [--anc ...] [--ldac on|off]
+#                           [--set-key 0x07=0x03[,0x08=0x04] --yes-write]
+#                           [--restore-keys --yes-write]
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
