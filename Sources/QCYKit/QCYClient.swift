@@ -14,6 +14,8 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
     private let notifyCharacteristic = CBUUID(string: "1002")
     private let batteryCharacteristic = CBUUID(string: "0008")
     private let versionCharacteristic = CBUUID(string: "0007")
+    private let keyMapCharacteristic = CBUUID(string: "000D")
+    private static let keyMapUUID = "000D"
 
     /// Chamado quando um advertising QCY aparece (com bateria e MACs já decodificados).
     public var onAdvertisement: (@Sendable (QCYAdvertisement) -> Void)?
@@ -56,11 +58,14 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
         }
     }
 
-    /// Pede de novo o retrato (bateria, cena, LDAC e jogo) sem derrubar a conexão.
+    /// Pede de novo o retrato completo (canal `1001` e mapa de gestos `000D`) sem derrubar a conexão.
     public func refresh() {
         queue.async {
             guard let peripheral = self.peripheral else { return }
             self.requestState(peripheral)
+            if let keyMap = self.characteristic(self.keyMapCharacteristic, of: peripheral) {
+                peripheral.readValue(for: keyMap)
+            }
         }
     }
 
@@ -101,11 +106,16 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
         }
     }
 
-    /// Pede o valor atual dos comandos de estado. É leitura (`0xFE`), não muda ajuste nenhum.
+    /// Pede o valor atual dos comandos de estado em dois lotes de 17 bytes (abaixo do MTU mínimo BLE).
     private func requestState(_ peripheral: CBPeripheral) {
-        let commands: [QCYCommand] = [.battery, .noiseCancelMode, .ancSetting, .ldac, .lowLatency]
-        send(QCYPacket(commands.map { QCYPacket.Block(command: QCYCommand.requestData.rawValue,
-                                                      parameters: [$0.rawValue]) }))
+        let batches: [[QCYCommand]] = [
+            [.battery, .noiseCancelMode, .ancSetting, .ldac, .lowLatency],
+            [.balance, .powerOff, .toneVolume, .wearDetection, .equalizer]
+        ]
+        for batch in batches {
+            send(QCYPacket(batch.map { QCYPacket.Block(command: QCYCommand.requestData.rawValue,
+                                                       parameters: [$0.rawValue]) }))
+        }
     }
 
     private func begin() {
@@ -211,7 +221,7 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
                 peripheral.setNotifyValue(true, for: characteristic)
             }
         }
-        for uuid in [batteryCharacteristic, versionCharacteristic] {
+        for uuid in [batteryCharacteristic, versionCharacteristic, keyMapCharacteristic] {
             if let characteristic = characteristic(uuid, of: peripheral) {
                 peripheral.readValue(for: characteristic)
             }
@@ -239,9 +249,24 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
             state.apply(QCYPacket.Block(command: QCYCommand.battery.rawValue, parameters: Array(data)))
         } else if characteristic.uuid == versionCharacteristic {
             state.apply(QCYPacket.Block(command: QCYCommand.version.rawValue, parameters: Array(data)))
+        } else if characteristic.uuid == keyMapCharacteristic {
+            state.applyKeyMap(data)
         } else {
             return
         }
         onState?(state)
+    }
+}
+
+extension QCYClient {
+    /// Relê o mapa de gestos na característica `0000000D`. O resultado chega via `onState`.
+    public func refreshKeyMap() {
+        readCharacteristic(Self.keyMapUUID)
+    }
+
+    /// Escreve `[keyId, funId]` em `0000000D` e dispara releitura — o estado só muda quando o eco volta.
+    public func setKeyFunction(_ function: QCYKeyFunction, for gesture: QCYGesture) {
+        writeCharacteristic(Self.keyMapUUID, data: Data([gesture.keyID, function.rawValue]))
+        readCharacteristic(Self.keyMapUUID)
     }
 }

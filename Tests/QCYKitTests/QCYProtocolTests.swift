@@ -116,6 +116,13 @@ final class QCYProtocolTests: XCTestCase {
         XCTAssertEqual(state.isLDACEnabled, false)
         XCTAssertEqual(state.isLowLatencyEnabled, false)
         XCTAssertEqual(state.ancScene, QCYANScene(mode: 0x03, subScene: 0x02, noiseValue: 0x00))
+        XCTAssertEqual(state.balance, 0x32)
+        XCTAssertEqual(state.toneVolume, .higher)
+        XCTAssertEqual(state.wearDetection,
+                       QCYWearDetection(isEnabled: true, musicControl: .pauseOnly, isANCSwitchEnabled: true))
+        XCTAssertNil(state.powerOff) // o retrato não traz 0x14
+        XCTAssertNil(state.soundEffect) // o retrato não traz 0x22
+        XCTAssertTrue(state.keyMap.isEmpty) // o retrato não traz 000D
         XCTAssertNil(state.noiseCancelMode) // o retrato não traz 0x0C
         XCTAssertNil(state.isInEarDetectionEnabled) // o retrato não traz 0x06
     }

@@ -1,0 +1,2 @@
+# Escrita de 2 bytes em 000D: L triplo (0x05) -> modo jogo (0x07), gravado via PacketLogger em 2026-11-25.
+05 07

@@ -1,0 +1,2 @@
+# Desligamento automatico 0x14 desativado (0xffff), gravado via PacketLogger em 2026-11-25.
+ff 06 14 04 ff ff 00 00

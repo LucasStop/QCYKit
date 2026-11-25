@@ -1,0 +1,2 @@
+# Desligamento automatico 0x14 em 60 minutos (0x003c LE), gravado via PacketLogger em 2026-11-25.
+ff 06 14 04 3c 00 00 00

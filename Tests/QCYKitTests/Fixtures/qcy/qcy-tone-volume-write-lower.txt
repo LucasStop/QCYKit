@@ -1,0 +1,3 @@
+# Volume do bipe 0x1d (escrita Lower = 0x04), gravado via PacketLogger em 2026-11-25.
+# Escrita envia 0x00 no segundo parametro.
+ff 04 1d 02 04 00

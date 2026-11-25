@@ -1,0 +1,2 @@
+# Volume do bipe 0x1d (resposta Maximum = 0x0a, max = 0x0f), gravado via PacketLogger em 2026-11-25.
+ff 04 1d 02 0a 0f
