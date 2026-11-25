@@ -1,6 +1,6 @@
 # API — QCYKit
 
-Status: rascunho, aguardando aprovação do Lucas
+Status: aprovado em 2026-11-25
 
 Sem API de rede. O contrato é a API pública Swift do pacote, consumida pelo LogiBattery (só leitura) e pelo QCYBattery (leitura e escrita).
 
