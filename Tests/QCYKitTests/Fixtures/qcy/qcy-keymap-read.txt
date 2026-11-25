@@ -1,0 +1,3 @@
+# Leitura da caracteristica 000D (20 bytes, pares keyId/funId), gravado via PacketLogger em 2026-11-25.
+# 01->03, 02->01, 03->02, 04->05, 05->0b, 06->06, 07->00, 08->00 + padding.
+01 03 02 01 03 02 04 05 05 0b 06 06 07 00 08 00 00 00 00 00

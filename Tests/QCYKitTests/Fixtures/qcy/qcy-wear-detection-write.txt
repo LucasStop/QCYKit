@@ -1,0 +1,2 @@
+# Deteccao de uso 0x2c (escrita 3 parametros: W=01, M=02, A=01), gravado via PacketLogger em 2026-11-25.
+ff 05 2c 03 01 02 01

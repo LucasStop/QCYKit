@@ -1,0 +1,2 @@
+# Notificacao EQ 0x22 Pop truncada em 20 bytes (id 0x02), gravado via PacketLogger em 2026-11-25.
+ff 91 22 8f 02 00 00 1e 00 00 00 28 00 04 dc 00 e0 fc 64 00

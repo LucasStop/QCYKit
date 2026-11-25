@@ -1,0 +1,2 @@
+# Leitura da caracteristica 000D com toque simples esquerdo sem acao (01->00), gravado via PacketLogger em 2026-11-25.
+01 00 02 01 03 02 04 05 05 0b 06 06 07 00 08 00 00 00 00 00

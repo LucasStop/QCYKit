@@ -1,0 +1,3 @@
+# Cena 0x17: ANC Indoor, gravado via PacketLogger em 2026-11-25.
+# TX/RX em 1001/1002: modo 01, subcena 02, profundidade 02.
+ff 05 17 03 01 02 02

@@ -88,14 +88,68 @@ O parser confere: 12 blocos, soma exata dos 48 bytes de corpo.
 | `0x2F` bateria | `FE 01 2F` (pedido) | `2F 03 esquerda direita estojo` | só leitura |
 | `0x30` versão | `FE 01 30` | `30 03 a b c` ou `30 06 La Lb Lc Ra Rb Rc` | só leitura |
 | `0x0C` modo simples | `0C 01 modo` (0 off, 1 ANC, 2 externo, 3 transparência) | **nada** (nem pedido com `0xFE` responde) | **não** — ver §7 |
+| `0x14` desligamento | `14 04 LL HH 00 00` (minutos LE; `FF FF` desativa) | `14 04 LL HH 00 00` (via `0xFE`) | **sim** |
+| `0x16` balanço L/R | `16 01 VV` (`00` L100, `32` centro, `64` R100) | `16 01 VV` (via `0xFE`) | **sim** |
 | `0x17` cena de ANC | `17 03 modo cena profundidade` | igual, com normalização | **sim** |
+| `0x1D` volume do bipe | `1D 02 VV 00` (`04` Lower, `06` Medium, `08` Higher, `0A` Maximum) | `1D 02 VV 0F` (via `0xFE`; `0F` = máximo) | **sim** |
+| `0x22` efeito / EQ | `22 8F ID ...` (bloco de 145 bytes; 143 de dados; quadro de 147 bytes) | notificação truncada em 20 bytes (`FF 91 22 8F ID ...`) via `0xFE` | **sim** |
 | `0x09` modo jogo | `09 01 01` liga / `09 01 02` desliga | `09 01 01` / `09 01 02` | sim |
 | `0x23` LDAC | `23 01 01` liga / `23 01 02` desliga | `23 01 00` / `23 01 01` | sim, persiste na reconexão |
+| `0x2C` detecção de uso | `2C 03 W M A` (W on/off, M música `00`..`03`, A ANC `00`/`01`) | `2C 04 W M A XX` (via `0xFE`; 4º byte ignorado) | **sim** |
 | `0xFE` pedir valor | `FE 01 <comando>` | resposta do comando pedido | — |
 
 Nos toggles o byte de resposta **não** é booleano: `0x01` = ligado, `0x02` = desligado no que se envia, mas a resposta do LDAC chega como `01 00`/`01 01` — a posição do valor muda entre pedido e resposta. O parser lê `parameters.first` porque é o que o fone manda de volta; não deduzir do que foi enviado.
 
-O fone **não manda** o retrato sozinho em toda conexão: na primeira sonda mandou, nas seguintes ficou calado até receber `0xFE`. Por isso o cliente pede bateria, modo (`0x0C`), cena de ANC (`0x17`), LDAC e modo jogo ao terminar a descoberta. Pedir os dois (modo e cena) é inofensivo agora que são campos separados; neste modelo só o `0x17` responde.
+O fone **não manda** o retrato sozinho em toda conexão: na primeira sonda mandou, nas seguintes ficou calado até receber `0xFE`. Por isso o cliente pede os comandos de estado em dois lotes de 17 bytes (abaixo do MTU mínimo BLE) e lê `000D` ao terminar a descoberta. Pedir `0x0C` junto com `0x17` é inofensivo agora que são campos separados; neste modelo só o `0x17` responde.
+
+### Protocolo completo medido via PacketLogger (2026-11-25, app oficial)
+
+Capturado sobre o app oficial da QCY (`ATT Write Command 0x52` em `1001`/handle `0x0015`, notificações `0x1B` em `1002`/handle `0x0017`, leitura/escrita de gestos em `000D`/handle `0x001A`):
+
+#### Cenas de ANC (`0x17`, `ff 05 17 03 M A B`)
+| Cena | Parâmetros `[M, A, B]` | Observação |
+|---|---|---|
+| Normal (desligado) | `02 00 00` | — |
+| ANC adaptativo | `01 05 00` | — |
+| ANC Indoor | `01 02 02` | — |
+| ANC Commuting | `01 01 00` | — |
+| Transparência com vocal | `03 02 00` | — |
+| Transparência sem vocal | `03 01 LL` | `LL` de `01` a `06` |
+
+#### Ajustes e som (`0x16`, `0x14`, `0x1D`, `0x2C`, `0x22`)
+| Ajuste | Quadro de escrita | Resposta (`0xFE`) | Valores medidos |
+|---|---|---|---|
+| Balanço (`0x16`) | `ff 03 16 01 VV` | `ff 03 16 01 VV` | `00` (L100) .. `32` (centro) .. `64` (R100) |
+| Desligamento (`0x14`) | `ff 06 14 04 LL HH 00 00` | `ff 06 14 04 LL HH 00 00` | 15 min `0f 00`, 30 `1e 00`, 60 `3c 00`, 90 `5a 00`, desativado `ff ff` |
+| Bipe (`0x1D`) | `ff 04 1d 02 VV 00` | `ff 04 1d 02 VV 0f` | Lower `04`, Medium `06`, Higher `08`, Maximum `0a` |
+| Detecção de uso (`0x2C`) | `ff 05 2c 03 W M A` | `ff 06 2c 04 W M A XX` | `W` `00`/`01`; `M` `00` desligado, `01` pausa/retoma, `02` só pausa, `03` ambos fones; `A` ANC `00`/`01` |
+| Efeito EQ (`0x22`) | `ff 91 22 8f ID ...` (147 bytes) | 20 bytes truncados (`ff 91 22 8f ID ...`) | `01` Default, `02` Pop, `03` Heavy Bass, `0a` Spatial (2ª página não medida; parser usa só o byte `ID`) |
+
+#### Gestos (característica `0000000d`, handle `0x001a`)
+- Escrita: 2 bytes `[keyId, funId]` via `writeWithoutResponse` (conforme propriedades da característica), seguida de leitura (`readValue`) para confirmar pelo eco.
+- Leitura: 20 bytes de pares `(keyId, funId)` com padding `00`.
+
+| `keyId` | Gesto |
+|---|---|
+| `0x01` | Esquerdo, 1 toque |
+| `0x02` | Direito, 1 toque |
+| `0x03` | Esquerdo, 2 toques |
+| `0x04` | Direito, 2 toques |
+| `0x05` | Esquerdo, 3 toques |
+| `0x06` | Direito, 3 toques |
+| `0x07`, `0x08` | não expostos no app oficial (valor `00`) |
+
+| `funId` | Função |
+|---|---|
+| `0x00` | Nada (`unassigned`) |
+| `0x01` | Play / Pause |
+| `0x02` | Faixa anterior |
+| `0x03` | Próxima faixa |
+| `0x04` | Assistente de voz |
+| `0x05` | Volume + |
+| `0x06` | Volume − |
+| `0x07` | Modo jogo |
+| `0x0B` | Modo ANC |
 
 ## 6. Escrita medida
 
@@ -175,9 +229,9 @@ Modos somente leitura do `tools/qcyctl/run.sh` para medir propriedades, teclas, 
 ### Resultados medidos
 
 - Propriedades (`--request`): a medir.
-- Teclas (`--dump-keys`, medido em 2026-11-25): característica GATT `000D` retornou 20 bytes:
+- Teclas (`--dump-keys` e PacketLogger, medido em 2026-11-25): característica GATT `000D` retornou 20 bytes:
   `01 03 02 01 03 02 04 05 05 0b 06 06 07 00 08 00 00 00 00 00`
-  (`0x01->0x03 0x02->0x01 0x03->0x02 0x04->0x05 0x05->0x0B 0x06->0x06 0x07->0x00 0x08->0x00`, seguido de zeros). Qual `keyId` corresponde a cada gesto físico ainda precisa ser mapeado alterando um par por vez.
+  (`0x01->0x03 0x02->0x01 0x03->0x02 0x04->0x05 0x05->0x0B 0x06->0x06 0x07->0x00 0x08->0x00`, seguido de zeros). Mapeamento confirmado via PacketLogger na tabela de §5.
 - EQ (`--dump-eq`): a medir.
 - Notificações de toque (`--listen-notify`): a medir.
 - Eventos de mídia (`--media-events`): a medir.

@@ -1,0 +1,3 @@
+# Cena 0x17: transparencia sem reforco vocal nivel 3, gravado via PacketLogger em 2026-11-25.
+# TX/RX em 1001/1002: modo 03, subcena 01, nivel 03 (faixa 01..06).
+ff 05 17 03 03 01 03

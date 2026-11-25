@@ -64,6 +64,14 @@ public struct QCYState: Equatable, Sendable {
     public var isLowLatencyEnabled: Bool?
     public var isInEarDetectionEnabled: Bool?
     public var isLDACEnabled: Bool?
+    /// Balanço L/R: `0x00` (L100) a `0x64` (R100), centro `0x32`.
+    public var balance: UInt8?
+    public var powerOff: QCYPowerOff?
+    public var toneVolume: QCYToneVolume?
+    public var wearDetection: QCYWearDetection?
+    public var soundEffect: QCYSoundEffect?
+    /// Mapa de gestos lido da característica `0000000D`.
+    public var keyMap: [QCYGesture: QCYKeyFunction] = [:]
 
     public init() {}
 
@@ -81,7 +89,31 @@ public struct QCYState: Equatable, Sendable {
         case .noiseCancelMode: applyNoiseCancelMode(block.parameters)
         case .ancSetting: applyANScene(block.parameters)
         case .lowLatency, .inEarDetection, .ldac: applyToggle(command, block.parameters)
-        case .requestData: break
+        default: applySettings(command, block.parameters)
+        }
+    }
+
+    private mutating func applySettings(_ command: QCYCommand, _ parameters: [UInt8]) {
+        switch command {
+        case .balance: applyBalance(parameters)
+        case .powerOff: applyPowerOff(parameters)
+        case .toneVolume: applyToneVolume(parameters)
+        case .wearDetection: applyWearDetection(parameters)
+        case .equalizer: applyEqualizer(parameters)
+        default: break
+        }
+    }
+
+    /// Aplica os pares `(keyId, funId)` lidos da característica `0000000D` (20 bytes com padding zero).
+    public mutating func applyKeyMap(_ data: Data) {
+        let bytes = Array(data)
+        var offset = 0
+        while offset + 1 < bytes.count {
+            if let gesture = QCYGesture(rawValue: bytes[offset]),
+               let function = QCYKeyFunction(rawValue: bytes[offset + 1]) {
+                keyMap[gesture] = function
+            }
+            offset += 2
         }
     }
 
@@ -121,5 +153,37 @@ public struct QCYState: Equatable, Sendable {
         case .ldac: isLDACEnabled = isEnabled
         default: break
         }
+    }
+
+    private mutating func applyBalance(_ parameters: [UInt8]) {
+        guard let value = parameters.first, value <= 0x64 else { return }
+        balance = value
+    }
+
+    private mutating func applyPowerOff(_ parameters: [UInt8]) {
+        guard parameters.count >= 2 else { return }
+        let raw = UInt16(parameters[0]) | (UInt16(parameters[1]) << 8)
+        powerOff = QCYPowerOff(rawMinutes: raw)
+    }
+
+    private mutating func applyToneVolume(_ parameters: [UInt8]) {
+        guard let raw = parameters.first else { return }
+        toneVolume = QCYToneVolume(rawValue: raw)
+    }
+
+    private mutating func applyWearDetection(_ parameters: [UInt8]) {
+        guard parameters.count >= 3,
+              let musicControl = QCYWearDetection.MusicControl(rawValue: parameters[1])
+        else { return }
+        wearDetection = QCYWearDetection(
+            isEnabled: parameters[0] == 0x01,
+            musicControl: musicControl,
+            isANCSwitchEnabled: parameters[2] == 0x01
+        )
+    }
+
+    private mutating func applyEqualizer(_ parameters: [UInt8]) {
+        guard let id = parameters.first else { return }
+        soundEffect = QCYSoundEffect(rawValue: id)
     }
 }

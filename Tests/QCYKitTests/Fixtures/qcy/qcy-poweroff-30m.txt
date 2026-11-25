@@ -1,0 +1,2 @@
+# Desligamento automatico 0x14 em 30 minutos (0x001e LE), gravado via PacketLogger em 2026-11-25.
+ff 06 14 04 1e 00 00 00

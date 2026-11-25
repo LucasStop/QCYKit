@@ -1,0 +1,2 @@
+# Balanco L/R 0x16 deslocado para a direita (0x5f), gravado via PacketLogger em 2026-11-25.
+ff 03 16 01 5f

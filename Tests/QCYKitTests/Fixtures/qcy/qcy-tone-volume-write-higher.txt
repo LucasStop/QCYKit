@@ -1,0 +1,2 @@
+# Volume do bipe 0x1d (escrita Higher = 0x08), gravado via PacketLogger em 2026-11-25.
+ff 04 1d 02 08 00
