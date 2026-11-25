@@ -16,6 +16,10 @@
 //     --scene MM/SS/NV           em hex
 //     --low-latency on|off
 //     --ldac on|off
+//   Escrita protegida de teclas em 000D (exige --yes-write; sem ele mostra o plano e sai com 64;
+//   nunca imprime MAC, nome ou série):
+//     --set-key 0x07=0x03[,0x08=0x04] --yes-write   salva backup em $TMPDIR/qcy-keys-original.hex, escreve e relê
+//     --restore-keys --yes-write                    restaura $TMPDIR/qcy-keys-original.hex em 000D e relê
 import AppKit
 import ApplicationServices
 import CoreBluetooth
@@ -23,8 +27,16 @@ import Foundation
 import MediaPlayer
 
 final class Tool: @unchecked Sendable {
+    private enum KeyWritePhase {
+        case idle
+        case waitingInitialRead
+        case waitingVerify(before: [UInt8]?, expected: [UInt8])
+        case done
+    }
+
     private let logURL: URL?
     private let logLock = NSLock()
+    private let stateLock = NSLock()
     private let seconds: TimeInterval
     private let writePacket: QCYPacket?
     private let verbose: Bool
@@ -33,6 +45,12 @@ final class Tool: @unchecked Sendable {
     private let dumpEQ: Bool
     private let listenNotify: Bool
     private let mediaEvents: Bool
+    private let keyChanges: [(UInt8, UInt8)]
+    private let restoreKeys: Bool
+    private let yesWrite: Bool
+    private let backupURL: URL
+    private var restorePayload: [UInt8]?
+    private var keyWritePhase: KeyWritePhase = .idle
     private let client = QCYClient()
     private let startUptime = ProcessInfo.processInfo.systemUptime
     private let requestQueue = DispatchQueue(label: "com.lucasstop.QCYCTL.requests")
@@ -41,8 +59,13 @@ final class Tool: @unchecked Sendable {
         !requestIDs.isEmpty || dumpKeys || dumpEQ || listenNotify || mediaEvents
     }
 
+    private var isKeyWriteMode: Bool {
+        !keyChanges.isEmpty || restoreKeys
+    }
+
     private var needsBluetooth: Bool {
-        !mediaEvents || !requestIDs.isEmpty || dumpKeys || dumpEQ || listenNotify || writePacket != nil
+        !mediaEvents || !requestIDs.isEmpty || dumpKeys || dumpEQ || listenNotify
+            || writePacket != nil || isKeyWriteMode
     }
 
     init(arguments: [String]) {
@@ -55,6 +78,9 @@ final class Tool: @unchecked Sendable {
         var dumpEQ = false
         var listenNotify = false
         var mediaEvents = false
+        var keyChanges: [(UInt8, UInt8)] = []
+        var restoreKeys = false
+        var yesWrite = false
         var index = 0
         func value(_ flag: String) -> String {
             guard index < arguments.count else {
@@ -87,6 +113,18 @@ final class Tool: @unchecked Sendable {
                 listenNotify = true
             case "--media-events":
                 mediaEvents = true
+            case "--set-key":
+                index += 1
+                guard let parsed = QCYProbeFormat.parseKeyChanges(value(flag)),
+                      parsed.allSatisfy({ $0.0 != 0x00 && $0.1 <= QCYProbeFormat.maxKeyFunctionID }) else {
+                    print("pares inválidos para --set-key (use hex keyId=funId com keyId!=0x00 e funId<=0x0B, ex: 0x07=0x03)")
+                    exit(64)
+                }
+                keyChanges.append(contentsOf: parsed)
+            case "--restore-keys":
+                restoreKeys = true
+            case "--yes-write":
+                yesWrite = true
             case "--anc":
                 index += 1
                 let modes: [String: UInt8] = ["off": 0x00, "anc": 0x01, "outdoor": 0x02, "transparency": 0x03]
@@ -116,8 +154,17 @@ final class Tool: @unchecked Sendable {
         }
 
         let probeSelected = !requestIDs.isEmpty || dumpKeys || dumpEQ || listenNotify || mediaEvents
-        if probeSelected && !blocks.isEmpty {
+        let keyWriteSelected = !keyChanges.isEmpty || restoreKeys
+        if probeSelected && (!blocks.isEmpty || keyWriteSelected) {
             print("erro: flags de escrita não podem ser combinadas com modos de sonda somente leitura")
+            exit(64)
+        }
+        if !keyChanges.isEmpty && restoreKeys {
+            print("erro: --set-key e --restore-keys não podem ser usados juntos")
+            exit(64)
+        }
+        if keyWriteSelected && !blocks.isEmpty {
+            print("erro: --set-key/--restore-keys não podem ser combinados com outras escritas")
             exit(64)
         }
 
@@ -130,6 +177,20 @@ final class Tool: @unchecked Sendable {
         self.dumpEQ = dumpEQ
         self.listenNotify = listenNotify
         self.mediaEvents = mediaEvents
+        self.keyChanges = keyChanges
+        self.restoreKeys = restoreKeys
+        self.yesWrite = yesWrite
+        self.backupURL = Self.defaultKeyBackupURL()
+    }
+
+    private static func defaultKeyBackupURL() -> URL {
+        let dir: URL
+        if let envTmp = ProcessInfo.processInfo.environment["TMPDIR"], !envTmp.isEmpty {
+            dir = URL(fileURLWithPath: envTmp, isDirectory: true)
+        } else {
+            dir = FileManager.default.temporaryDirectory
+        }
+        return dir.appendingPathComponent("qcy-keys-original.hex")
     }
 
     /// `MM/SS/NV` em hexadecimal, como o fone devolve em `0x17`.
@@ -151,6 +212,10 @@ final class Tool: @unchecked Sendable {
     }
 
     func run() {
+        if isKeyWriteMode {
+            prepareKeyWriteOrExit()
+        }
+
         if needsBluetooth {
             configureBluetooth()
             client.start()
@@ -162,6 +227,16 @@ final class Tool: @unchecked Sendable {
             RunLoop.current.run(until: Date().addingTimeInterval(seconds))
         }
 
+        if isKeyWriteMode {
+            let unfinished: Bool = stateLock.withLock {
+                if case .done = keyWritePhase { return false }
+                return true
+            }
+            if unfinished {
+                log("aviso: operacao em 000D nao completou dentro de \(Int(seconds))s")
+            }
+        }
+
         if needsBluetooth {
             client.stop()
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
@@ -169,11 +244,44 @@ final class Tool: @unchecked Sendable {
         log("fim")
     }
 
+    private func prepareKeyWriteOrExit() {
+        if !yesWrite {
+            if !keyChanges.isEmpty {
+                let summary = keyChanges
+                    .map { String(format: "0x%02X->0x%02X", $0.0, $0.1) }
+                    .joined(separator: " ")
+                log("dry-run (--yes-write ausente): nada foi escrito no fone.")
+                log("plano: conectar ao QCY, ler 000D, salvar backup em \(backupURL.path) (se ainda nao existir), "
+                    + "aplicar \(summary), escrever 000D, aguardar 1s e reler 000D para confirmar.")
+                log("para executar de verdade, repita o comando com --yes-write.")
+            } else {
+                log("dry-run (--yes-write ausente): nada foi escrito no fone.")
+                log("plano: ler backup em \(backupURL.path), conectar ao QCY, escrever em 000D, "
+                    + "aguardar 1s e reler 000D para confirmar.")
+                log("para executar de verdade, repita o comando com --yes-write.")
+            }
+            exit(64)
+        }
+
+        if restoreKeys {
+            guard let text = try? String(contentsOf: backupURL, encoding: .utf8),
+                  let bytes = QCYProbeFormat.parseHexBytes(text),
+                  bytes.count <= QCYProbeFormat.maxKeyPayloadLength,
+                  bytes.count.isMultiple(of: 2) else {
+                log("erro: backup ausente ou invalido em \(backupURL.path)")
+                exit(64)
+            }
+            restorePayload = bytes
+        }
+    }
+
     private func configureBluetooth() {
         let watchedIDs = Set(allProbeRequestIDs())
 
         if isReadOnlyProbe {
             log("conectando ao QCY em modo somente leitura…")
+        } else if isKeyWriteMode {
+            log("conectando ao QCY para operacao protegida em 000D…")
         } else {
             log("procurando QCY por manufacturer data 0x521C…")
             client.onAdvertisement = { [weak self] advertisement in
@@ -192,6 +300,10 @@ final class Tool: @unchecked Sendable {
             guard let self else { return }
             let upper = uuid.uppercased()
             let bytes = Array(data)
+            if self.isKeyWriteMode && (upper == "000D" || upper.hasPrefix("0000000D-")) {
+                self.handleKeyCharacteristicRead(bytes)
+                return
+            }
             if self.dumpKeys && (upper == "000D" || upper.hasPrefix("0000000D-")) {
                 let pairs = QCYProbeFormat.formatKeyPairs(bytes)
                 self.log("gatt=000D \(QCYProbeFormat.formatReply(id: 0x0D, payload: bytes))")
@@ -239,6 +351,10 @@ final class Tool: @unchecked Sendable {
                 self.sendProbeReads()
                 return
             }
+            if self.isKeyWriteMode {
+                self.beginKeyWriteOnReady()
+                return
+            }
             guard let writePacket else { return }
             self.log("escrevendo \(QCYProbeFormat.hex(Array(writePacket.encoded())))")
             self.client.send(writePacket)
@@ -246,6 +362,79 @@ final class Tool: @unchecked Sendable {
 
         client.onFailure = { [weak self] message in
             self?.log("falha: \(message)")
+        }
+    }
+
+    private func beginKeyWriteOnReady() {
+        if !keyChanges.isEmpty {
+            let shouldStart: Bool = stateLock.withLock {
+                guard case .idle = keyWritePhase else { return false }
+                keyWritePhase = .waitingInitialRead
+                return true
+            }
+            guard shouldStart else { return }
+            log("lendo 000D antes da alteracao…")
+            client.readCharacteristic("000D")
+        } else if let payload = restorePayload {
+            let shouldStart: Bool = stateLock.withLock {
+                guard case .idle = keyWritePhase else { return false }
+                keyWritePhase = .waitingVerify(before: nil, expected: payload)
+                return true
+            }
+            guard shouldStart else { return }
+            log("restaurando 000D de \(backupURL.path): hex=\(QCYProbeFormat.hex(payload)) "
+                + "(\(QCYProbeFormat.formatKeyPairs(payload)))")
+            client.writeCharacteristic("000D", data: Data(payload))
+            requestQueue.asyncAfter(deadline: .now() + .seconds(1)) { [weak self] in
+                self?.client.readCharacteristic("000D")
+            }
+        }
+    }
+
+    private func handleKeyCharacteristicRead(_ bytes: [UInt8]) {
+        let phase: KeyWritePhase = stateLock.withLock { keyWritePhase }
+        switch phase {
+        case .waitingInitialRead:
+            saveBackupIfMissing(bytes)
+            log("original (000D): len=\(bytes.count) hex=\(QCYProbeFormat.hex(bytes)) "
+                + "(\(QCYProbeFormat.formatKeyPairs(bytes)))")
+            guard let updated = QCYProbeFormat.applyPairs(original: bytes, changes: keyChanges) else {
+                stateLock.withLock { keyWritePhase = .done }
+                log("erro: nao foi possivel aplicar pares sobre o payload lido de 000D (nada escrito)")
+                return
+            }
+            stateLock.withLock { keyWritePhase = .waitingVerify(before: bytes, expected: updated) }
+            log("escrevendo (000D): len=\(updated.count) hex=\(QCYProbeFormat.hex(updated)) "
+                + "(\(QCYProbeFormat.formatKeyPairs(updated)))")
+            client.writeCharacteristic("000D", data: Data(updated))
+            requestQueue.asyncAfter(deadline: .now() + .seconds(1)) { [weak self] in
+                self?.client.readCharacteristic("000D")
+            }
+        case .waitingVerify(let before, let expected):
+            stateLock.withLock { keyWritePhase = .done }
+            if let before {
+                log("antes   (000D): hex=\(QCYProbeFormat.hex(before)) (\(QCYProbeFormat.formatKeyPairs(before)))")
+            }
+            log("escrito (000D): hex=\(QCYProbeFormat.hex(expected)) (\(QCYProbeFormat.formatKeyPairs(expected)))")
+            log("depois  (000D): hex=\(QCYProbeFormat.hex(bytes)) (\(QCYProbeFormat.formatKeyPairs(bytes)))")
+            let matched = bytes == expected
+            log("confirmacao releitura: \(matched ? "OK (bate com o escrito)" : "DIVERGENTE (nao confiar na escrita)")")
+        case .idle, .done:
+            break
+        }
+    }
+
+    private func saveBackupIfMissing(_ bytes: [UInt8]) {
+        if FileManager.default.fileExists(atPath: backupURL.path) {
+            log("backup original preservado em \(backupURL.path) (ja existia, nao sobrescrito)")
+            return
+        }
+        guard let data = (QCYProbeFormat.hex(bytes) + "\n").data(using: .utf8) else { return }
+        do {
+            try data.write(to: backupURL, options: .withoutOverwriting)
+            log("backup original salvo em \(backupURL.path)")
+        } catch {
+            log("aviso: nao foi possivel salvar backup em \(backupURL.path): \(error.localizedDescription)")
         }
     }
 

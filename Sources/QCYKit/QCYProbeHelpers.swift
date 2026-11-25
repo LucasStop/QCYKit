@@ -26,6 +26,78 @@ enum QCYProbeFormat {
         QCYPacket([QCYPacket.Block(command: QCYCommand.requestData.rawValue, parameters: [id])])
     }
 
+    /// Tamanho máximo (em bytes) do payload da característica `000D` (10 pares `keyId->funId`).
+    static let maxKeyPayloadLength = 20
+    /// Maior `funId` aceito pelo protocolo de remapeamento de teclas.
+    static let maxKeyFunctionID: UInt8 = 0x0B
+
+    /// Faz o parsing de pares `keyId=funId` separados por vírgula em hex (ex: `"0x07=0x03,0x08=0x04"`).
+    static func parseKeyChanges(_ text: String) -> [(UInt8, UInt8)]? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let parts = trimmed.split(separator: ",", omittingEmptySubsequences: false)
+        var pairs: [(UInt8, UInt8)] = []
+        pairs.reserveCapacity(parts.count)
+        for part in parts {
+            let pairParts = part.split(separator: "=", omittingEmptySubsequences: false)
+            guard pairParts.count == 2,
+                  let keyID = parseHexByte(String(pairParts[0])),
+                  let funID = parseHexByte(String(pairParts[1])) else { return nil }
+            pairs.append((keyID, funID))
+        }
+        return pairs
+    }
+
+    /// Faz o parsing de bytes em hex separados por espaços ou quebras de linha (ex: backup de `000D`).
+    static func parseHexBytes(_ text: String) -> [UInt8]? {
+        let tokens = text.split { $0.isWhitespace }
+        guard !tokens.isEmpty else { return nil }
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(tokens.count)
+        for token in tokens {
+            guard let byte = parseHexByte(String(token)) else { return nil }
+            bytes.append(byte)
+        }
+        return bytes
+    }
+
+    /// Aplica alterações de pares `keyId->funId` sobre o payload de `000D`.
+    /// Substitui `keyId` existente, preenche o primeiro slot livre `(0x00, 0x00)` quando ausente,
+    /// rejeita `keyId == 0x00`, `funId > 0x0B`, payload ímpar ou maior que 20 bytes.
+    static func applyPairs(original: [UInt8], changes: [(UInt8, UInt8)]) -> [UInt8]? {
+        guard original.count <= maxKeyPayloadLength, original.count.isMultiple(of: 2) else {
+            return nil
+        }
+        var result = original
+        for (keyID, funID) in changes {
+            guard keyID != 0x00, funID <= maxKeyFunctionID else { return nil }
+            if let index = stride(from: 0, to: result.count, by: 2).first(where: { result[$0] == keyID }) {
+                result[index + 1] = funID
+            } else if let freeIndex = stride(from: 0, to: result.count, by: 2).first(where: {
+                result[$0] == 0x00 && result[$0 + 1] == 0x00
+            }) {
+                result[freeIndex] = keyID
+                result[freeIndex + 1] = funID
+            } else if result.count + 2 <= maxKeyPayloadLength {
+                result.append(keyID)
+                result.append(funID)
+            } else {
+                return nil
+            }
+        }
+        return result
+    }
+
+    private static func parseHexByte(_ text: String) -> UInt8? {
+        var token = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return nil }
+        if token.hasPrefix("0x") || token.hasPrefix("0X") {
+            token.removeFirst(2)
+        }
+        guard !token.isEmpty else { return nil }
+        return UInt8(token, radix: 16)
+    }
+
     /// Formata bytes em hex minúsculo separado por espaço.
     static func hex(_ bytes: [UInt8]) -> String {
         bytes.map { String(format: "%02x", $0) }.joined(separator: " ")
