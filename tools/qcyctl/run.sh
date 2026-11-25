@@ -11,7 +11,7 @@ app="$out/QCYCTL.app"
 
 rm -rf "$out"
 mkdir -p "$app/Contents/MacOS"
-swiftc -O "$here/main.swift" "$root"/LogiBattery/Core/BLE/*.swift -o "$app/Contents/MacOS/QCYCTL"
+swiftc -O "$here/main.swift" "$root"/Sources/QCYKit/*.swift -o "$app/Contents/MacOS/QCYCTL"
 
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

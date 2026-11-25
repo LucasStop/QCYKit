@@ -4,9 +4,9 @@ enum QCYFixtureError: Error {
     case missing(String)
 }
 
-/// Lê uma fixture de hex de `Tests/Fixtures/qcy/`. Linhas começando com `#` são comentário.
+/// Lê uma fixture de hex de `Tests/QCYKitTests/Fixtures/qcy/`. Linhas começando com `#` são comentário.
 func qcyFixture(_ name: String) throws -> [UInt8] {
-    let bundle = Bundle(for: QCYFixtureMarker.self)
+    let bundle = Bundle.module
     guard let url = bundle.url(forResource: name, withExtension: "txt") else {
         throw QCYFixtureError.missing(name)
     }
@@ -19,5 +19,3 @@ func qcyFixture(_ name: String) throws -> [UInt8] {
     guard !bytes.isEmpty else { throw QCYFixtureError.missing(name) }
     return bytes
 }
-
-private final class QCYFixtureMarker {}

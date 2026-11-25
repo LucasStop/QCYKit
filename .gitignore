@@ -1,0 +1,19 @@
+# Sistema e editor
+.DS_Store
+.idea/
+.vscode/
+
+# Override pessoal da CLI de IA
+CLAUDE.local.md
+
+# Swift / Xcode
+.build/
+build.noindex/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcodeproj/
+
+# SwiftPM
+Package.resolved
+.swiftpm/

@@ -1,6 +1,6 @@
 # QCY — protocolo do fone MeloBuds Pro
 
-Referência do canal de controle BLE do QCY, medida no fone do Lucas. Complementa [ARCHITECTURE.md](ARCHITECTURE.md) §11.2 e as fixtures de `Tests/Fixtures/qcy/`.
+Referência do canal de controle BLE do QCY, medida no fone do Lucas. Usada pelo [LogiBattery](https://github.com/LucasStop/LogiBattery) (leitura L/R) e pelo [QCYBattery](https://github.com/LucasStop/QCYBattery) (leitura e escrita); fixtures em `Tests/QCYKitTests/Fixtures/qcy/`.
 
 Status: medido em 2026-11-12 (macOS 26), com o fone conectado ao Mac como dispositivo de áudio (A2DP). Leitura e escrita medidas no fone; o mapeamento de cenas de ANC foi confirmado de ouvido pelo Lucas, com o fone no ouvido, e restaurado ao estado original no fim.
 
@@ -8,7 +8,7 @@ Status: medido em 2026-11-12 (macOS 26), com o fone conectado ao Mac como dispos
 
 O macOS mostra um número só para o fone, e o número que ele mostra não é o do fone: em 2026-11-12 o sistema exibia **100%** enquanto o advertising e a característica de bateria diziam **91–92%** em cada lado. O protocolo do QCY entrega o que o sistema não dá: bateria do lado esquerdo, do direito e do estojo, versão de firmware, modo de cancelamento de ruído, LDAC e modo jogo.
 
-Implementação em [`LogiBattery/Core/BLE/`](../LogiBattery/Core/BLE): `QCYAdvertisement` (advertising), `QCYPacket` (framing), `QCYState` (estado acumulado) e `QCYClient` (CoreBluetooth). Protocolo documentado pelo projeto [Quicky](https://github.com/hui1601/Quicky) (`docs/protocol.md`), reimplementado a partir da descrição — o repositório não tem licença, então nenhum código foi copiado.
+Implementação em [`Sources/QCYKit/`](../Sources/QCYKit): `QCYAdvertisement` (advertising), `QCYPacket` (framing), `QCYState` (estado acumulado) e `QCYClient` (CoreBluetooth). Protocolo documentado pelo projeto [Quicky](https://github.com/hui1601/Quicky) (`docs/protocol.md`), reimplementado a partir da descrição — o repositório não tem licença, então nenhum código foi copiado.
 
 ## 2. Descoberta
 
@@ -158,4 +158,4 @@ tools/qcyctl/run.sh --seconds 12 --scene 03/02/00 --verbose          # transpar�
 tools/qcyctl/run.sh --seconds 12 --ldac off --low-latency off         # restaurar toggles
 ```
 
-O script compila `tools/qcyctl/main.swift` junto com `LogiBattery/Core/BLE/*.swift` e roda dentro de um `.app` assinado ad-hoc em `$TMPDIR/qcyctl`. O bundle é obrigatório: um binário de linha de comando sem `NSBluetoothAlwaysUsageDescription` morre com `SIGABRT` (exit 134) assim que toca no `CBCentralManager`, e o relatório de crash aponta o TCC, não o código. Foi o primeiro tropeço desta etapa.
+O script compila `tools/qcyctl/main.swift` junto com `Sources/QCYKit/*.swift` e roda dentro de um `.app` assinado ad-hoc em `$TMPDIR/qcyctl`. O bundle é obrigatório: um binário de linha de comando sem `NSBluetoothAlwaysUsageDescription` morre com `SIGABRT` (exit 134) assim que toca no `CBCentralManager`, e o relatório de crash aponta o TCC, não o código. Foi o primeiro tropeço desta etapa.

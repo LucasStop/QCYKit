@@ -7,7 +7,7 @@ import Foundation
 /// Lê o retrato e escreve os ajustes medidos (cena de ANC, LDAC e modo jogo). O fone aceita a conexão GATT com o
 /// áudio A2DP ativo (medido em 2026-11-12), então o app não precisa derrubar o áudio para ler a bateria. Os
 /// callbacks rodam na fila interna do cliente.
-final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, @unchecked Sendable {
+public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, @unchecked Sendable {
     /// `CBUUID` não é `Sendable`, então as constantes ficam por instância (mesmo padrão do `BLEBatteryReader`).
     private let service = CBUUID(string: "A001")
     private let commandCharacteristic = CBUUID(string: "1001")
@@ -16,30 +16,34 @@ final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
     private let versionCharacteristic = CBUUID(string: "0007")
 
     /// Chamado quando um advertising QCY aparece (com bateria e MACs já decodificados).
-    var onAdvertisement: (@Sendable (QCYAdvertisement) -> Void)?
+    public var onAdvertisement: (@Sendable (QCYAdvertisement) -> Void)?
     /// Chamado quando o estado muda por notificação ou leitura de característica.
-    var onState: (@Sendable (QCYState) -> Void)?
+    public var onState: (@Sendable (QCYState) -> Void)?
     /// Chamado uma vez por conexão, quando as características já foram descobertas (é quando dá para escrever).
-    var onReady: (@Sendable () -> Void)?
+    public var onReady: (@Sendable () -> Void)?
     /// Chamado quando o link cai, limpo ou com erro. O cliente volta a escanear sozinho.
-    var onDisconnect: (@Sendable () -> Void)?
+    public var onDisconnect: (@Sendable () -> Void)?
     /// Bytes crus de cada notificação de `00001002`, para diagnóstico e para virar fixture.
-    var onPacket: (@Sendable (Data) -> Void)?
+    public var onPacket: (@Sendable (Data) -> Void)?
     /// Falha de conexão, serviço ausente ou erro do CoreBluetooth.
-    var onFailure: (@Sendable (String) -> Void)?
+    public var onFailure: (@Sendable (String) -> Void)?
 
-    private let queue = DispatchQueue(label: "com.lucasstop.LogiBattery.qcy")
+    private let queue = DispatchQueue(label: "com.lucasstop.QCYKit.client")
     private var manager: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var state = QCYState()
     private var isRunning = false
 
+    override public init() {
+        super.init()
+    }
+
     /// Começa a escanear. Sem permissão de Bluetooth o `CBCentralManager` fica em `.unauthorized` e nada acontece.
-    func start() {
+    public func start() {
         queue.async { self.begin() }
     }
 
-    func stop() {
+    public func stop() {
         queue.async {
             self.isRunning = false
             self.manager?.stopScan()
@@ -51,7 +55,7 @@ final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
     }
 
     /// Pede de novo o retrato (bateria, cena, LDAC e jogo) sem derrubar a conexão.
-    func refresh() {
+    public func refresh() {
         queue.async {
             guard let peripheral = self.peripheral else { return }
             self.requestState(peripheral)
@@ -59,7 +63,7 @@ final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
     }
 
     /// Escreve um pacote em `00001001`. Só é chamado por quem já decidiu escrever (modo, jogo, LDAC).
-    func send(_ packet: QCYPacket) {
+    public func send(_ packet: QCYPacket) {
         queue.async {
             guard let peripheral = self.peripheral,
                   let characteristic = self.characteristic(self.commandCharacteristic, of: peripheral)
@@ -120,7 +124,7 @@ final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
             .first { $0.uuid == uuid }
     }
 
-    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    public func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
             if isRunning { scan(central) }
@@ -133,8 +137,8 @@ final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
         }
     }
 
-    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
-                        advertisementData: [String: Any], rssi RSSI: NSNumber) {
+    public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
+                               advertisementData: [String: Any], rssi RSSI: NSNumber) {
         guard isRunning, self.peripheral == nil,
               let data = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
               let advertisement = QCYAdvertisement(manufacturerData: data)
@@ -144,17 +148,18 @@ final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
         attach(peripheral)
     }
 
-    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         peripheral.discoverServices([service])
     }
 
-    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+    public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         onFailure?("não conectou: \(error?.localizedDescription ?? "sem motivo informado")")
         self.peripheral = nil
         scan(central)
     }
 
-    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+    public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral,
+                               error: Error?) {
         self.peripheral = nil
         state = QCYState()
         onDisconnect?()
@@ -162,7 +167,7 @@ final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
         scan(central)
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard let main = peripheral.services?.first(where: { $0.uuid == service }) else {
             onFailure?("serviço A001 ausente")
             manager?.cancelPeripheralConnection(peripheral)
@@ -171,7 +176,8 @@ final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
         peripheral.discoverCharacteristics(nil, for: main)
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService,
+                           error: Error?) {
         // A assinatura de `00001002` entrega o que muda; `0008` também notifica bateria. As leituras e o pedido
         // de estado cobrem o caso de o firmware ficar calado até alguém perguntar.
         for uuid in [notifyCharacteristic, batteryCharacteristic] {
@@ -188,7 +194,8 @@ final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate,
         onReady?()
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+    public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic,
+                           error: Error?) {
         guard error == nil, let data = characteristic.value else { return }
         if characteristic.uuid == notifyCharacteristic {
             onPacket?(data)
