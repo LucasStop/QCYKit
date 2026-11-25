@@ -1,7 +1,7 @@
 import XCTest
-@testable import LogiBattery
+@testable import QCYKit
 
-/// Protocolo do fone QCY a partir do advertising e da notificação reais gravados em `Tests/Fixtures/qcy/`.
+/// Protocolo do fone QCY a partir do advertising e da notificação reais gravados em `Tests/QCYKitTests/Fixtures/qcy/`.
 final class QCYProtocolTests: XCTestCase {
     // MARK: - Advertising
 

@@ -1,11 +1,11 @@
 import Foundation
 
 /// Nível de um componente do fone. Bit 7 do byte cru é a flag de carga; os 7 bits baixos são a porcentagem.
-struct QCYBatteryLevel: Equatable, Sendable {
-    let percent: Int
-    let isCharging: Bool
+public struct QCYBatteryLevel: Equatable, Sendable {
+    public let percent: Int
+    public let isCharging: Bool
 
-    init(raw: UInt8) {
+    public init(raw: UInt8) {
         percent = Int(raw & 0x7F)
         isCharging = raw & 0x80 != 0
     }
@@ -16,20 +16,20 @@ struct QCYBatteryLevel: Equatable, Sendable {
 /// Formato do projeto Quicky (`docs/protocol.md`), conferido nos bytes reais do MeloBuds Pro. Os offsets do
 /// documento contam a partir do primeiro byte **depois** do company id; o `CoreBluetooth` entrega o company id
 /// nos dois primeiros bytes, em little-endian.
-struct QCYAdvertisement: Equatable, Sendable {
-    static let companyID: UInt16 = 0x521C
+public struct QCYAdvertisement: Equatable, Sendable {
+    public static let companyID: UInt16 = 0x521C
 
-    let vendorID: UInt16
-    let colorIndex: Int
-    let left: QCYBatteryLevel
-    let right: QCYBatteryLevel
+    public let vendorID: UInt16
+    public let colorIndex: Int
+    public let left: QCYBatteryLevel
+    public let right: QCYBatteryLevel
     /// `nil` quando o estojo reporta `0x00`, que é "sem leitura" (fora do alcance ou desligado), não 0%.
-    let caseBattery: QCYBatteryLevel?
-    let controlMAC: String?
-    let otherMAC: String?
+    public let caseBattery: QCYBatteryLevel?
+    public let controlMAC: String?
+    public let otherMAC: String?
 
     /// 20 bytes é o mínimo para vendor id e bateria; 26 para os dois MACs (24 de payload).
-    init?(manufacturerData data: Data) {
+    public init?(manufacturerData data: Data) {
         let bytes = Array(data)
         guard bytes.count >= 20 else { return nil }
         guard UInt16(bytes[0]) | UInt16(bytes[1]) << 8 == Self.companyID else { return nil }

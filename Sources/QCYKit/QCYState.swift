@@ -1,13 +1,13 @@
 import Foundation
 
 /// Modo atual de cancelamento de ruído (comando `0x0C`).
-enum QCYNoiseCancelMode: UInt8, Equatable, Sendable {
+public enum QCYNoiseCancelMode: UInt8, Equatable, Sendable {
     case off = 0x00
     case anc = 0x01
     case outdoor = 0x02
     case transparency = 0x03
 
-    var name: String {
+    public var name: String {
         switch self {
         case .off: return "Desligado"
         case .anc: return "ANC"
@@ -21,46 +21,59 @@ enum QCYNoiseCancelMode: UInt8, Equatable, Sendable {
 ///
 /// Não é o mesmo que o modo atual. No MeloBuds Pro os dois discordam: o `0x0C` responde `2` (ANC externo)
 /// enquanto o `0x17` responde `3/2`. Guardar num campo só fazia o valor oscilar conforme a ordem das respostas.
-struct QCYANScene: Equatable, Sendable {
-    let mode: UInt8
-    let subScene: UInt8
-    let noiseValue: UInt8
+public struct QCYANScene: Equatable, Sendable {
+    public let mode: UInt8
+    public let subScene: UInt8
+    public let noiseValue: UInt8
+
+    public init(mode: UInt8, subScene: UInt8, noiseValue: UInt8) {
+        self.mode = mode
+        self.subScene = subScene
+        self.noiseValue = noiseValue
+    }
 
     /// O documento do Quicky dá `0x02/0x01..03` como ambiente silencioso, `0x03/0x01..03` como ambiente de
     /// trabalho, `0x04/0x01..03` como ambiente ruidoso e `0x0A/0x01..07` como transparência — mas também diz
     /// que o app dele remapeia `0x03/0x01` para `0x03/0x02` no caso da transparência. Como as duas leituras se
     /// contradizem, nada de nome: sai o par em hex.
-    var name: String {
+    public var name: String {
         String(format: "%02X/%02X", mode, subScene)
     }
 }
 
 /// Versão de firmware. O fone devolve 3 bytes (só o lado esquerdo) ou 6 (um conjunto por lado).
-struct QCYFirmware: Equatable, Sendable {
-    let left: String
-    let right: String?
+public struct QCYFirmware: Equatable, Sendable {
+    public let left: String
+    public let right: String?
+
+    public init(left: String, right: String?) {
+        self.left = left
+        self.right = right
+    }
 }
 
 /// Estado montado a partir das notificações de `00001002`. Cada resposta traz só os blocos que mudaram,
 /// então o estado é acumulativo: aplica o que chegou e mantém o resto.
-struct QCYState: Equatable, Sendable {
-    var left: QCYBatteryLevel?
-    var right: QCYBatteryLevel?
-    var caseBattery: QCYBatteryLevel?
-    var firmware: QCYFirmware?
-    var noiseCancelMode: QCYNoiseCancelMode?
-    var ancScene: QCYANScene?
-    var isLowLatencyEnabled: Bool?
-    var isInEarDetectionEnabled: Bool?
-    var isLDACEnabled: Bool?
+public struct QCYState: Equatable, Sendable {
+    public var left: QCYBatteryLevel?
+    public var right: QCYBatteryLevel?
+    public var caseBattery: QCYBatteryLevel?
+    public var firmware: QCYFirmware?
+    public var noiseCancelMode: QCYNoiseCancelMode?
+    public var ancScene: QCYANScene?
+    public var isLowLatencyEnabled: Bool?
+    public var isInEarDetectionEnabled: Bool?
+    public var isLDACEnabled: Bool?
 
-    mutating func apply(_ packet: QCYPacket) {
+    public init() {}
+
+    public mutating func apply(_ packet: QCYPacket) {
         for block in packet.blocks {
             apply(block)
         }
     }
 
-    mutating func apply(_ block: QCYPacket.Block) {
+    public mutating func apply(_ block: QCYPacket.Block) {
         guard let command = QCYCommand(rawValue: block.command) else { return }
         switch command {
         case .battery: applyBattery(block.parameters)
