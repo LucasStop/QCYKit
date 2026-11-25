@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Compila e roda a sonda do QCY dentro de um .app assinado (ad-hoc).
 # O bundle não é enfeite: CoreBluetooth aborta o processo (SIGABRT) sem NSBluetoothAlwaysUsageDescription.
-# Uso: tools/qcyctl/run.sh [--seconds 8] [--anc off|anc|outdoor|transparency] [--ldac on|off]
+# Uso: tools/qcyctl/run.sh [--seconds 8] [--request 0x16,0x14,...] [--dump-keys] [--dump-eq]
+#                           [--listen-notify] [--media-events] [--anc ...] [--ldac on|off]
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -11,7 +12,7 @@ app="$out/QCYCTL.app"
 
 rm -rf "$out"
 mkdir -p "$app/Contents/MacOS"
-swiftc -O "$here/main.swift" "$root"/Sources/QCYKit/*.swift -o "$app/Contents/MacOS/QCYCTL"
+xcrun swiftc -O "$here/main.swift" "$root"/Sources/QCYKit/*.swift -o "$app/Contents/MacOS/QCYCTL"
 
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

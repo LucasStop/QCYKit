@@ -27,6 +27,8 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
     public var onPacket: (@Sendable (Data) -> Void)?
     /// Falha de conexão, serviço ausente ou erro do CoreBluetooth.
     public var onFailure: (@Sendable (String) -> Void)?
+    /// Leituras cruas de qualquer característica GATT do serviço `A001` (uso interno da sonda `qcyctl`).
+    var onCharacteristicValue: (@Sendable (String, Data) -> Void)?
 
     private let queue = DispatchQueue(label: "com.lucasstop.QCYKit.client")
     private var manager: CBCentralManager?
@@ -59,6 +61,17 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
         queue.async {
             guard let peripheral = self.peripheral else { return }
             self.requestState(peripheral)
+        }
+    }
+
+    /// Lê uma característica GATT do serviço `A001` pelo UUID curto (ex: `"000D"`, `"000B"`). Somente leitura.
+    func readCharacteristic(_ uuidString: String) {
+        queue.async {
+            let target = CBUUID(string: uuidString)
+            guard let peripheral = self.peripheral,
+                  let characteristic = self.characteristic(target, of: peripheral)
+            else { return }
+            peripheral.readValue(for: characteristic)
         }
     }
 
@@ -197,6 +210,7 @@ public final class QCYClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
     public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic,
                            error: Error?) {
         guard error == nil, let data = characteristic.value else { return }
+        onCharacteristicValue?(characteristic.uuid.uuidString, data)
         if characteristic.uuid == notifyCharacteristic {
             onPacket?(data)
             guard let packet = QCYPacket(data: data) else { return }
