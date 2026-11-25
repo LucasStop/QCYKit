@@ -159,3 +159,23 @@ tools/qcyctl/run.sh --seconds 12 --ldac off --low-latency off         # restaura
 ```
 
 O script compila `tools/qcyctl/main.swift` junto com `Sources/QCYKit/*.swift` e roda dentro de um `.app` assinado ad-hoc em `$TMPDIR/qcyctl`. O bundle é obrigatório: um binário de linha de comando sem `NSBluetoothAlwaysUsageDescription` morre com `SIGABRT` (exit 134) assim que toca no `CBCentralManager`, e o relatório de crash aponta o TCC, não o código. Foi o primeiro tropeço desta etapa.
+
+## 10. Sondas de medição
+
+Modos somente leitura do `tools/qcyctl/run.sh` para medir propriedades, teclas, EQ, eventos de toque e teclas de mídia sem escrever nada no fone. Nenhum desses modos imprime MAC, nome ou número de série.
+
+| Flag | Comando | O que faz e o que imprime |
+|---|---|---|
+| `--request` | `tools/qcyctl/run.sh --seconds 12 --request 0x16,0x14,0x1D,0x2C,0x2D,0x2E,0x20,0x22,0x44` | Envia `0xFE` (leitura) para cada ID listado e imprime cada resposta como `id=0x.. len=N hex=..`. |
+| `--dump-keys` | `tools/qcyctl/run.sh --seconds 12 --dump-keys` | Lê `0x0D` (característica GATT `000D` e pedido `0xFE 01 0D`) e imprime o hex cru e os pares `keyId->funId` em hex. |
+| `--dump-eq` | `tools/qcyctl/run.sh --seconds 12 --dump-eq` | Lê `0x0B` (característica GATT `000B` e pedido `0xFE 01 0B`) e `0x20`/`0x22`, imprimindo o hex cru de cada resposta. |
+| `--listen-notify` | `tools/qcyctl/run.sh --seconds 30 --listen-notify` | Assina notificações de `1002` e imprime cada pacote com timestamp relativo em ms (`[+NNNms] len=N hex=..`), para testar 1, 2, 3, 4 toques, toque longo e deslize. |
+| `--media-events` | `tools/qcyctl/run.sh --seconds 30 --media-events` | Registra handlers em `MPRemoteCommandCenter` (play, pause, toggle, next, previous) e monitor global `NSEvent` (`.systemDefined`), imprimindo cada evento com timestamp relativo em ms. Se Acessibilidade não estiver autorizada, imprime aviso sem travar. |
+
+### Resultados medidos
+
+- Propriedades (`--request`): a medir.
+- Teclas (`--dump-keys`): a medir.
+- EQ (`--dump-eq`): a medir.
+- Notificações de toque (`--listen-notify`): a medir.
+- Eventos de mídia (`--media-events`): a medir.
